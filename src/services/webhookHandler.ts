@@ -128,6 +128,7 @@ async function processNotification(notification: WebhookNotification): Promise<v
       logger.info(`Ignoring change type: ${notification.changeType}`);
     }
   } catch (error) {
+
     logger.error('Error in processNotification', error);
     throw error;
   }
