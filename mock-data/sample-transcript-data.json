@@ -1,0 +1,58 @@
+{
+  "meetingId": "mock-meeting-123",
+  "meetingTitle": "Daily Standup",
+  "meetingType": "daily",
+  "date": "2026-02-04T09:00:00Z",
+  "duration": 15,
+  "attendees": [
+    {
+      "name": "John Smith",
+      "email": "john.smith@company.com"
+    },
+    {
+      "name": "Sarah Johnson",
+      "email": "sarah.johnson@company.com"
+    },
+    {
+      "name": "Mike Chen",
+      "email": "mike.chen@company.com"
+    }
+  ],
+  "transcript": [
+    {
+      "timestamp": "00:00:05",
+      "speaker": "John Smith",
+      "text": "Good morning everyone, let's start the daily standup."
+    },
+    {
+      "timestamp": "00:00:10",
+      "speaker": "Sarah Johnson",
+      "text": "Yesterday I completed the authentication feature. Today I'll continue with the API integration."
+    },
+    {
+      "timestamp": "00:00:18",
+      "speaker": "Mike Chen",
+      "text": "I'm blocked on the database schema review. Need approval from the DBA team."
+    },
+    {
+      "timestamp": "00:00:25",
+      "speaker": "John Smith",
+      "text": "Okay, I'll reach out to the DBA team for you. Sarah, great progress on auth!"
+    },
+    {
+      "timestamp": "00:00:32",
+      "speaker": "Sarah Johnson",
+      "text": "Thanks! I should have the API integration done by end of day."
+    },
+    {
+      "timestamp": "00:00:40",
+      "speaker": "Mike Chen",
+      "text": "Once I get schema approval, I can start on the data migration scripts."
+    },
+    {
+      "timestamp": "00:00:48",
+      "speaker": "John Smith",
+      "text": "Perfect. Any other blockers? No? Alright, let's get back to work!"
+    }
+  ]
+}

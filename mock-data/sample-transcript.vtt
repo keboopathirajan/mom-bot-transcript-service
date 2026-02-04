@@ -1,0 +1,22 @@
+WEBVTT
+
+00:00:05.000 --> 00:00:10.000
+<v John Smith>Good morning everyone, let's start the daily standup.</v>
+
+00:00:10.500 --> 00:00:18.000
+<v Sarah Johnson>Yesterday I completed the authentication feature. Today I'll continue with the API integration.</v>
+
+00:00:18.500 --> 00:00:25.000
+<v Mike Chen>I'm blocked on the database schema review. Need approval from the DBA team.</v>
+
+00:00:25.500 --> 00:00:32.000
+<v John Smith>Okay, I'll reach out to the DBA team for you. Sarah, great progress on auth!</v>
+
+00:00:32.500 --> 00:00:40.000
+<v Sarah Johnson>Thanks! I should have the API integration done by end of day.</v>
+
+00:00:40.500 --> 00:00:48.000
+<v Mike Chen>Once I get schema approval, I can start on the data migration scripts.</v>
+
+00:00:48.500 --> 00:00:55.000
+<v John Smith>Perfect. Any other blockers? No? Alright, let's get back to work!</v>
