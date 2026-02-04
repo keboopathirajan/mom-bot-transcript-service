@@ -5,13 +5,19 @@ import { config } from '../config/config';
 import { logger } from '../utils/logger';
 
 /**
- * Graph client instance for making authenticated requests to Microsoft Graph API
+ * Graph client instance for APPLICATION permissions (client credentials flow)
+ * This is used when IT grants app-level permissions like OnlineMeetings.Read.All
+ * 
+ * For DELEGATED permissions (user's own meetings), use getUserGraphClient() from authService.ts
  */
 let graphClient: Client | null = null;
 
 /**
- * Initialize and return the Microsoft Graph client
+ * Initialize and return the Microsoft Graph client using APPLICATION permissions
  * Uses Azure AD client credentials flow for authentication
+ * 
+ * This requires IT to grant application-level permissions (e.g., OnlineMeetings.Read.All)
+ * For user-level access (delegated permissions), use authService.ts instead
  */
 export function getGraphClient(): Client {
   if (graphClient) {

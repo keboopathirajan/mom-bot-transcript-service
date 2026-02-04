@@ -1,8 +1,16 @@
 import { Request, Response } from 'express';
 import { WebhookNotification, WebhookValidationRequest } from '../types';
-import { fetchTranscript } from './transcriptFetcher';
+import { fetchTranscript, fetchUserTranscript, listUserMeetings } from './transcriptFetcher';
+import { getValidAccessToken, TokenResponse } from './authService';
 import { logger } from '../utils/logger';
 import { config } from '../config/config';
+
+// Extend Express Request to include session with tokens
+declare module 'express-session' {
+  interface SessionData {
+    tokens?: TokenResponse;
+  }
+}
 
 /**
  * Handle webhook validation request from Microsoft Graph
@@ -136,33 +144,109 @@ async function processNotification(notification: WebhookNotification): Promise<v
 
 /**
  * Manually trigger transcript fetch (for testing)
+ * Supports both delegated (user login) and application permissions
  */
 export async function handleManualTrigger(req: Request, res: Response): Promise<void> {
   try {
     const { meetingId, organizerId } = req.body;
 
-    if (!meetingId || !organizerId) {
-      res.status(400).json({
-        error: 'Missing required parameters',
-        message: 'Both meetingId and organizerId are required',
+    // Check if user is authenticated (delegated permissions)
+    if (req.session?.tokens) {
+      // Use delegated permissions (user's own meetings)
+      if (!meetingId) {
+        res.status(400).json({
+          error: 'Missing required parameter',
+          message: 'meetingId is required',
+          note: 'You are authenticated. Use /meetings to list your meetings.',
+        });
+        return;
+      }
+
+      logger.info(`Manual trigger for meeting ${meetingId} (delegated permissions)`);
+
+      // Get valid access token (refresh if needed)
+      const tokens = await getValidAccessToken(req.session.tokens);
+      req.session.tokens = tokens;
+
+      // Fetch transcript using user's token
+      const transcriptData = await fetchUserTranscript(tokens.accessToken, meetingId);
+
+      res.status(200).json({
+        success: true,
+        message: 'Transcript fetched successfully (using your credentials)',
+        authMode: 'delegated',
+        data: transcriptData,
       });
-      return;
+    } else {
+      // Use application permissions (requires organizerId)
+      if (!meetingId || !organizerId) {
+        res.status(400).json({
+          error: 'Missing required parameters',
+          message: 'Both meetingId and organizerId are required (app permissions mode)',
+          hint: 'Login at /auth/login to use delegated permissions (no organizerId needed)',
+        });
+        return;
+      }
+
+      logger.info(`Manual trigger for meeting ${meetingId} (app permissions)`);
+
+      // Fetch transcript using app credentials
+      const transcriptData = await fetchTranscript(meetingId, organizerId);
+
+      res.status(200).json({
+        success: true,
+        message: 'Transcript fetched successfully (using app credentials)',
+        authMode: 'application',
+        data: transcriptData,
+      });
     }
-
-    logger.info(`Manual trigger for meeting ${meetingId}`);
-
-    // Fetch transcript
-    const transcriptData = await fetchTranscript(meetingId, organizerId);
-
-    res.status(200).json({
-      success: true,
-      message: 'Transcript fetched successfully',
-      data: transcriptData,
-    });
   } catch (error: any) {
     logger.error('Manual trigger failed', error);
     res.status(500).json({
       error: 'Failed to fetch transcript',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * List user's meetings (delegated permissions only)
+ */
+export async function handleListMeetings(req: Request, res: Response): Promise<void> {
+  try {
+    // Check if user is authenticated
+    if (!req.session?.tokens) {
+      res.status(401).json({
+        error: 'Not authenticated',
+        message: 'Login at /auth/login to list your meetings',
+      });
+      return;
+    }
+
+    logger.info('Listing user meetings...');
+
+    // Get valid access token
+    const tokens = await getValidAccessToken(req.session.tokens);
+    req.session.tokens = tokens;
+
+    // List user's meetings
+    const meetings = await listUserMeetings(tokens.accessToken);
+
+    res.status(200).json({
+      success: true,
+      count: meetings.length,
+      meetings: meetings.map(m => ({
+        id: m.id,
+        subject: m.subject,
+        startDateTime: m.startDateTime,
+        endDateTime: m.endDateTime,
+        joinUrl: m.joinUrl,
+      })),
+    });
+  } catch (error: any) {
+    logger.error('Failed to list meetings', error);
+    res.status(500).json({
+      error: 'Failed to list meetings',
       message: error.message,
     });
   }
