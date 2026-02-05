@@ -54,6 +54,10 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
+    
+    // Additional headers for third-party cookie support in incognito mode
+    res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.header('Cross-Origin-Embedder-Policy', 'unsafe-none');
   }
 
   // Handle preflight requests
@@ -64,12 +68,13 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Session middleware for storing user tokens
+// Session middleware for storing user tokens with enhanced cross-origin support
 app.use(
   session({
     secret: config.session.secret,
     resave: false,
     saveUninitialized: false,
+    name: 'sessionId', // Explicit session name
     cookie: {
       secure: true, // Always secure since both local and production use HTTPS/localhost
       httpOnly: true,
@@ -77,8 +82,62 @@ app.use(
       sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     },
+    // Custom cookie serialization for better incognito support
+    genid: () => {
+      return require('crypto').randomBytes(32).toString('hex');
+    },
   })
 );
+
+// Enhanced cookie middleware for cross-origin support (incognito mode fix)
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:3000', 
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:3000',
+    config.frontend.url,
+    'https://mom-bot-frontend.vercel.app',
+    'https://mom-bot-frontend-git-main-keboopathirajans-projects.vercel.app',
+  ];
+
+  if (origin && allowedOrigins.includes(origin)) {
+    // Override res.cookie to ensure SameSite=None; Secure for cross-origin
+    const originalCookie = res.cookie;
+    res.cookie = function(name: string, value: string, options: any = {}) {
+      const cookieOptions = {
+        ...options,
+        sameSite: 'none' as const,
+        secure: true,
+        httpOnly: true,
+      };
+      return originalCookie.call(this, name, value, cookieOptions);
+    };
+
+    // Intercept Set-Cookie headers to ensure proper formatting
+    const originalSetHeader = res.setHeader;
+    res.setHeader = function(name: string, value: any) {
+      if (name.toLowerCase() === 'set-cookie') {
+        if (Array.isArray(value)) {
+          value = value.map((cookie: string) => {
+            if (!cookie.includes('SameSite=None')) {
+              return cookie + '; SameSite=None; Secure';
+            }
+            return cookie;
+          });
+        } else if (typeof value === 'string') {
+          if (!value.includes('SameSite=None')) {
+            value = value + '; SameSite=None; Secure';
+          }
+        }
+      }
+      return originalSetHeader.call(this, name, value);
+    };
+  }
+
+  next();
+});
 
 // Request logging middleware
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -163,12 +222,25 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
 
     logger.info('✅ User authenticated successfully');
 
-    // Explicitly save session before redirect
+    // Explicitly save session before redirect with enhanced cross-origin cookie handling
     req.session.save((err) => {
       if (err) {
         logger.error('Failed to save session', err);
         return res.status(500).json({ error: 'Session save failed' });
       }
+      
+      // Ensure session cookie is set with proper cross-origin attributes
+      const sessionId = req.sessionID;
+      res.cookie('sessionId', sessionId, {
+        secure: true,
+        httpOnly: true,
+        sameSite: 'none',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        domain: undefined, // Don't set domain to allow cross-origin
+      });
+      
+      logger.info(`Session saved with ID: ${sessionId} for cross-origin access`);
+      
       // Redirect to frontend with success
       res.redirect(`${config.frontend.url}?auth=success`);
     });
@@ -187,7 +259,14 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
  */
 app.get('/auth/status', async (req: Request, res: Response) => {
   try {
+    const userAgent = req.headers['user-agent'] || '';
+    const isIncognito = userAgent.includes('Chrome') && req.headers['sec-ch-ua'];
+    const cookies = req.headers.cookie || 'No cookies';
+    
     logger.info(`Auth status check - Session ID: ${req.sessionID}, Has tokens: ${!!req.session.tokens}`);
+    logger.info(`Request origin: ${req.headers.origin}, User-Agent: ${userAgent.substring(0, 100)}`);
+    logger.info(`Cookies received: ${cookies.substring(0, 200)}`);
+    logger.info(`Possible incognito mode: ${isIncognito}`);
 
     // Prevent caching of auth status
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
