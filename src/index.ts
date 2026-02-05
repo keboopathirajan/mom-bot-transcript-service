@@ -1,6 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
 import session from 'express-session';
-import path from 'path';
 import { config, validateConfig } from './config/config';
 import { logger } from './utils/logger';
 import { testGraphConnection } from './services/graphClient';
@@ -394,11 +393,7 @@ app.get('/', (req: Request, res: Response) => {
   });
 });
 
-/**
- * Serve static files from frontend build
- */
-const publicPath = path.join(__dirname, 'public');
-app.use(express.static(publicPath));
+// Pure API backend - no static file serving
 
 /**
  * Error handling middleware
@@ -413,31 +408,13 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 });
 
 /**
- * Catch-all: Serve React app for any unmatched routes
- * This enables client-side routing in the React SPA
+ * 404 handler for unmatched API routes
  */
 app.use((req: Request, res: Response) => {
-  // Check if it's an API request that wasn't matched
-  if (req.path.startsWith('/api/') || req.path.startsWith('/auth/') ||
-    req.path.startsWith('/webhook') || req.path.startsWith('/transcript/') ||
-    req.path.startsWith('/meetings') || req.path.startsWith('/health') ||
-    req.path.startsWith('/test/')) {
-    res.status(404).json({
-      error: 'Not found',
-      message: `Route ${req.method} ${req.path} not found`,
-    });
-  } else {
-    // Serve React app for client-side routing
-    const indexPath = path.join(publicPath, 'index.html');
-    res.sendFile(indexPath, (err) => {
-      if (err) {
-        res.status(404).json({
-          error: 'Frontend not built',
-          message: 'Run "npm run build:frontend" to build the frontend',
-        });
-      }
-    });
-  }
+  res.status(404).json({
+    error: 'Not found',
+    message: `Route ${req.method} ${req.path} not found`,
+  });
 });
 
 /**
