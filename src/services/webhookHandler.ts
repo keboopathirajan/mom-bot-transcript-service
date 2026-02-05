@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { WebhookNotification, WebhookValidationRequest } from '../types';
-import { fetchTranscript, fetchUserTranscript, listUserMeetings } from './transcriptFetcher';
+import { fetchTranscript, fetchUserTranscript, listUserMeetings, getMeetingByJoinUrl } from './transcriptFetcher';
 import { getValidAccessToken, TokenResponse } from './authService';
 import { logger } from '../utils/logger';
 import { config } from '../config/config';
@@ -145,31 +145,48 @@ async function processNotification(notification: WebhookNotification): Promise<v
 /**
  * Manually trigger transcript fetch (for testing)
  * Supports both delegated (user login) and application permissions
+ * 
+ * Accepts either:
+ * - meetingId: Graph API meeting ID (base64 encoded)
+ * - joinUrl: Teams meeting join URL (will be resolved to meetingId)
  */
 export async function handleManualTrigger(req: Request, res: Response): Promise<void> {
   try {
-    const { meetingId, organizerId } = req.body;
+    const { meetingId, joinUrl, organizerId } = req.body;
 
     // Check if user is authenticated (delegated permissions)
     if (req.session?.tokens) {
       // Use delegated permissions (user's own meetings)
-      if (!meetingId) {
+      if (!meetingId && !joinUrl) {
         res.status(400).json({
           error: 'Missing required parameter',
-          message: 'meetingId is required',
-          note: 'You are authenticated. Use /meetings to list your meetings.',
+          message: 'Either meetingId or joinUrl is required',
+          example: {
+            withJoinUrl: { joinUrl: 'https://teams.microsoft.com/l/meetup-join/...' },
+            withMeetingId: { meetingId: 'MSoxYTJiM2M0ZC01ZTZm...' },
+          },
         });
         return;
       }
-
-      logger.info(`Manual trigger for meeting ${meetingId} (delegated permissions)`);
 
       // Get valid access token (refresh if needed)
       const tokens = await getValidAccessToken(req.session.tokens);
       req.session.tokens = tokens;
 
+      let resolvedMeetingId = meetingId;
+
+      // If joinUrl provided, resolve it to meetingId
+      if (joinUrl && !meetingId) {
+        logger.info('Resolving meeting from join URL...');
+        const meeting = await getMeetingByJoinUrl(tokens.accessToken, joinUrl);
+        resolvedMeetingId = meeting.id;
+        logger.info(`Resolved to meeting ID: ${resolvedMeetingId}`);
+      }
+
+      logger.info(`Manual trigger for meeting ${resolvedMeetingId} (delegated permissions)`);
+
       // Fetch transcript using user's token
-      const transcriptData = await fetchUserTranscript(tokens.accessToken, meetingId);
+      const transcriptData = await fetchUserTranscript(tokens.accessToken, resolvedMeetingId);
 
       res.status(200).json({
         success: true,
@@ -183,7 +200,7 @@ export async function handleManualTrigger(req: Request, res: Response): Promise<
         res.status(400).json({
           error: 'Missing required parameters',
           message: 'Both meetingId and organizerId are required (app permissions mode)',
-          hint: 'Login at /auth/login to use delegated permissions (no organizerId needed)',
+          hint: 'Login at /auth/login to use delegated permissions (supports joinUrl)',
         });
         return;
       }
@@ -210,7 +227,12 @@ export async function handleManualTrigger(req: Request, res: Response): Promise<
 }
 
 /**
- * List user's meetings (delegated permissions only)
+ * List user's meetings or look up a specific meeting by join URL
+ * 
+ * Query params:
+ * - joinUrl: Look up a specific meeting by its Teams join URL
+ * 
+ * Without joinUrl, attempts to list meetings (may fail due to Graph API limitations)
  */
 export async function handleListMeetings(req: Request, res: Response): Promise<void> {
   try {
@@ -218,35 +240,67 @@ export async function handleListMeetings(req: Request, res: Response): Promise<v
     if (!req.session?.tokens) {
       res.status(401).json({
         error: 'Not authenticated',
-        message: 'Login at /auth/login to list your meetings',
+        message: 'Login at /auth/login to access your meetings',
       });
       return;
     }
-
-    logger.info('Listing user meetings...');
 
     // Get valid access token
     const tokens = await getValidAccessToken(req.session.tokens);
     req.session.tokens = tokens;
 
-    // List user's meetings
-    const meetings = await listUserMeetings(tokens.accessToken);
+    // Check if looking up specific meeting by join URL
+    const joinUrl = req.query.joinUrl as string;
 
-    res.status(200).json({
-      success: true,
-      count: meetings.length,
-      meetings: meetings.map(m => ({
-        id: m.id,
-        subject: m.subject,
-        startDateTime: m.startDateTime,
-        endDateTime: m.endDateTime,
-        joinUrl: m.joinUrl,
-      })),
-    });
+    if (joinUrl) {
+      logger.info('Looking up meeting by join URL...');
+      
+      const meeting = await getMeetingByJoinUrl(tokens.accessToken, joinUrl);
+
+      res.status(200).json({
+        success: true,
+        meeting: {
+          id: meeting.id,
+          subject: meeting.subject,
+          startDateTime: meeting.startDateTime,
+          endDateTime: meeting.endDateTime,
+          joinUrl: meeting.joinWebUrl,
+        },
+        hint: 'Use the "id" field with POST /transcript/fetch to get the transcript',
+      });
+      return;
+    }
+
+    // Try to list all meetings (may fail due to Graph API requiring filter)
+    logger.info('Listing user meetings...');
+
+    try {
+      const meetings = await listUserMeetings(tokens.accessToken);
+
+      res.status(200).json({
+        success: true,
+        count: meetings.length,
+        meetings: meetings.map(m => ({
+          id: m.id,
+          subject: m.subject,
+          startDateTime: m.startDateTime,
+          endDateTime: m.endDateTime,
+          joinUrl: m.joinWebUrl,
+        })),
+      });
+    } catch (listError: any) {
+      // Graph API doesn't support listing all meetings - provide helpful error
+      res.status(400).json({
+        error: 'Cannot list all meetings',
+        message: 'Microsoft Graph API requires a filter to query meetings.',
+        solution: 'Provide a joinUrl query parameter to look up a specific meeting',
+        example: '/meetings?joinUrl=https://teams.microsoft.com/l/meetup-join/...',
+      });
+    }
   } catch (error: any) {
-    logger.error('Failed to list meetings', error);
+    logger.error('Failed to get meetings', error);
     res.status(500).json({
-      error: 'Failed to list meetings',
+      error: 'Failed to get meetings',
       message: error.message,
     });
   }

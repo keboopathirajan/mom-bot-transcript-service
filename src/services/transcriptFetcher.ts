@@ -231,8 +231,49 @@ export async function isTranscriptAvailable(
 // ============================================================
 
 /**
+ * Get a meeting by its join URL (delegated permissions)
+ * This is the primary way to look up meetings since listing all meetings is not supported
+ * 
+ * @param accessToken - User's OAuth access token
+ * @param joinUrl - The Teams meeting join URL
+ * @returns Meeting object with id, subject, etc.
+ */
+export async function getMeetingByJoinUrl(accessToken: string, joinUrl: string): Promise<any> {
+  try {
+    logger.info('Looking up meeting by join URL...');
+    const client = getUserGraphClient(accessToken);
+
+    // The join URL needs to be properly encoded for the filter
+    // Graph API expects: $filter=JoinWebUrl eq 'url'
+    const response = await client
+      .api('/me/onlineMeetings')
+      .filter(`JoinWebUrl eq '${joinUrl}'`)
+      .get();
+
+    const meetings = response.value || [];
+    
+    if (meetings.length === 0) {
+      logger.error('No meeting found with this join URL');
+      throw new Error('Meeting not found. Make sure you are the organizer of this meeting.');
+    }
+
+    const meeting = meetings[0];
+    logger.info(`✅ Found meeting: "${meeting.subject}" (ID: ${meeting.id})`);
+    
+    return meeting;
+  } catch (error: any) {
+    if (error.message?.includes('Meeting not found')) {
+      throw error;
+    }
+    logger.error('Failed to look up meeting by join URL', error);
+    throw new Error(`Failed to look up meeting: ${error.message}`);
+  }
+}
+
+/**
  * List user's online meetings (delegated permissions)
- * Returns meetings the logged-in user has organized
+ * NOTE: This requires a filter - listing all meetings is not supported by Graph API
+ * Use getMeetingByJoinUrl() instead for looking up specific meetings
  */
 export async function listUserMeetings(accessToken: string): Promise<any[]> {
   try {
