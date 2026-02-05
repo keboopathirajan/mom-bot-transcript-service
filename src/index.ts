@@ -34,15 +34,16 @@ app.set('trust proxy', 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// CORS middleware - Allow local frontend dev to call Render backend
+// CORS middleware - Allow frontend to call backend
 app.use((req: Request, res: Response, next: NextFunction) => {
   const allowedOrigins = [
     'http://localhost:5173',      // Vite dev server
     'http://localhost:3000',      // Local backend
     'http://127.0.0.1:5173',
     'http://127.0.0.1:3000',
+    config.frontend.url,          // Production frontend URL
   ];
-
+  
   const origin = req.headers.origin;
   if (origin && allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
@@ -50,12 +51,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   }
-
+  
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
-
+  
   next();
 });
 
@@ -66,11 +67,10 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: config.server.nodeEnv === 'production', // HTTPS only in production
+      secure: true, // Always secure since both local and production use HTTPS/localhost
       httpOnly: true,
-      // 'none' allows cross-origin requests (local frontend -> Render backend)
-      // 'lax' is used in dev to allow OAuth redirects without Secure requirement
-      sameSite: config.server.nodeEnv === 'production' ? 'none' : 'lax',
+      // Use 'none' for cross-origin cookies (frontend on Vercel, backend on Render)
+      sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     },
   })
@@ -183,6 +183,8 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
  */
 app.get('/auth/status', async (req: Request, res: Response) => {
   try {
+    logger.info(`Auth status check - Session ID: ${req.sessionID}, Has tokens: ${!!req.session.tokens}`);
+    
     if (!req.session.tokens) {
       return res.status(200).json({
         authenticated: false,
