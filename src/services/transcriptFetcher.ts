@@ -367,7 +367,19 @@ async function getUserTranscriptContent(
       .header('Accept', 'text/vtt')
       .get();
 
+    // DEBUG: Log the raw content to understand its format
     logger.info('✅ Transcript content retrieved');
+    logger.info(`[DEBUG] Content type: ${typeof content}`);
+    logger.info(`[DEBUG] Content length: ${content?.length || 'N/A'}`);
+    logger.info(`[DEBUG] First 500 chars: ${String(content).substring(0, 500)}`);
+    logger.info(`[DEBUG] Is Buffer: ${Buffer.isBuffer(content)}`);
+    
+    // If content is a Buffer, convert to string
+    if (Buffer.isBuffer(content)) {
+      logger.info('[DEBUG] Converting Buffer to string...');
+      return content.toString('utf-8');
+    }
+    
     return content;
   } catch (error: any) {
     if (error.statusCode === 404) {

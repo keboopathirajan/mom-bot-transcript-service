@@ -23,7 +23,23 @@ export interface ParsedTranscriptEntry {
  */
 export function parseVTT(vttContent: string): ParsedTranscriptEntry[] {
   try {
-    logger.debug('Parsing VTT transcript...');
+    logger.info('[DEBUG] Parsing VTT transcript...');
+    logger.info(`[DEBUG] VTT content type: ${typeof vttContent}`);
+    logger.info(`[DEBUG] VTT content length: ${vttContent?.length || 'N/A'}`);
+    
+    // Handle case where content might be an object (JSON response)
+    if (typeof vttContent === 'object') {
+      logger.info(`[DEBUG] Content is object, stringifying: ${JSON.stringify(vttContent).substring(0, 500)}`);
+      vttContent = JSON.stringify(vttContent);
+    }
+    
+    // Ensure we have a string
+    if (typeof vttContent !== 'string') {
+      logger.info(`[DEBUG] Converting to string from: ${typeof vttContent}`);
+      vttContent = String(vttContent);
+    }
+    
+    logger.info(`[DEBUG] First 500 chars of VTT: ${vttContent.substring(0, 500)}`);
 
     const entries: ParsedTranscriptEntry[] = [];
 
@@ -32,6 +48,9 @@ export function parseVTT(vttContent: string): ParsedTranscriptEntry[] {
       .split('\n')
       .map(line => line.trim())
       .filter(line => line.length > 0);
+    
+    logger.info(`[DEBUG] Total lines after split: ${lines.length}`);
+    logger.info(`[DEBUG] First 5 lines: ${JSON.stringify(lines.slice(0, 5))}`);
 
     // Skip the first line (WEBVTT header)
     let i = lines[0] === 'WEBVTT' ? 1 : 0;
