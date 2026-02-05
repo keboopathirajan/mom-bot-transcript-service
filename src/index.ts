@@ -48,7 +48,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
   const origin = req.headers.origin;
   logger.info(`CORS check - Origin: ${origin}, Allowed: ${allowedOrigins.includes(origin || '')}`);
-  
+
   if (origin && allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
@@ -188,12 +188,18 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
 app.get('/auth/status', async (req: Request, res: Response) => {
   try {
     logger.info(`Auth status check - Session ID: ${req.sessionID}, Has tokens: ${!!req.session.tokens}`);
-
+    
+    // Prevent caching of auth status
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    
     if (!req.session.tokens) {
       return res.status(200).json({
         authenticated: false,
         message: 'Not logged in. Visit /auth/login to authenticate.',
         loginUrl: '/auth/login',
+        timestamp: Date.now(), // Add timestamp to prevent caching
       });
     }
 
@@ -212,6 +218,7 @@ app.get('/auth/status', async (req: Request, res: Response) => {
       },
       tokenExpiresIn: `${expiresIn} minutes`,
       message: 'You are authenticated. You can now fetch your meeting transcripts.',
+      timestamp: Date.now(), // Add timestamp to prevent caching
       endpoints: {
         'POST /transcript/fetch': 'Fetch transcript (uses your auth)',
         'GET /auth/logout': 'Logout',
