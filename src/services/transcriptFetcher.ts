@@ -106,12 +106,35 @@ async function getTranscriptContent(
     const client = getGraphClient();
 
     // Get transcript content in VTT format
-    const content = await client
+    const response = await client
       .api(`/users/${organizerId}/onlineMeetings/${meetingId}/transcripts/${transcriptId}/content`)
       .header('Accept', 'text/vtt')
       .get();
 
     logger.info('✅ Transcript content retrieved');
+
+    // Handle stream responses (Graph SDK returns ReadableStream for content endpoints)
+    let content: string;
+
+    if (typeof response === 'string') {
+      content = response;
+    } else if (Buffer.isBuffer(response)) {
+      content = response.toString('utf-8');
+    } else if (response?.getReader) {
+      // ReadableStream
+      content = await streamToString(response as ReadableStream<Uint8Array>);
+    } else if (response?.readable || response?.on) {
+      // Node.js stream
+      content = await new Promise<string>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+        response.on('error', reject);
+      });
+    } else {
+      content = String(response);
+    }
+
     return content;
   } catch (error: any) {
     if (error.statusCode === 404) {
@@ -190,7 +213,7 @@ export async function fetchTranscript(
         name: attendee.emailAddress?.name || attendee.emailAddress?.address || 'Unknown',
         email: attendee.emailAddress?.address || 'unknown@email.com',
       }));
-    
+
     const transcriptData: TranscriptData = {
       meetingId,
       meetingTitle: meetingInfo.subject || 'Untitled Meeting',
@@ -255,7 +278,7 @@ export async function getMeetingByJoinUrl(accessToken: string, joinUrl: string):
       .get();
 
     const meetings = response.value || [];
-    
+
     if (meetings.length === 0) {
       logger.error('No meeting found with this join URL');
       throw new Error('Meeting not found. Make sure you are the organizer of this meeting.');
@@ -263,7 +286,7 @@ export async function getMeetingByJoinUrl(accessToken: string, joinUrl: string):
 
     const meeting = meetings[0];
     logger.info(`✅ Found meeting: "${meeting.subject}" (ID: ${meeting.id})`);
-    
+
     return meeting;
   } catch (error: any) {
     if (error.message?.includes('Meeting not found')) {
@@ -355,6 +378,31 @@ async function listUserTranscripts(
 }
 
 /**
+ * Helper function to consume a ReadableStream and return string content
+ */
+async function streamToString(stream: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) chunks.push(value);
+  }
+
+  // Combine all chunks and decode as UTF-8
+  const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+  const combined = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  return new TextDecoder('utf-8').decode(combined);
+}
+
+/**
  * Get transcript content using delegated permissions
  */
 async function getUserTranscriptContent(
@@ -366,24 +414,65 @@ async function getUserTranscriptContent(
     logger.info(`Fetching transcript content (ID: ${transcriptId}) (delegated)...`);
     const client = getUserGraphClient(accessToken);
 
-    const content = await client
+    const response = await client
       .api(`/me/onlineMeetings/${meetingId}/transcripts/${transcriptId}/content`)
       .header('Accept', 'text/vtt')
       .get();
 
-    // DEBUG: Log the raw content to understand its format
     logger.info('✅ Transcript content retrieved');
-    logger.info(`[DEBUG] Content type: ${typeof content}`);
-    logger.info(`[DEBUG] Content length: ${content?.length || 'N/A'}`);
-    logger.info(`[DEBUG] First 500 chars: ${String(content).substring(0, 500)}`);
-    logger.info(`[DEBUG] Is Buffer: ${Buffer.isBuffer(content)}`);
-    
-    // If content is a Buffer, convert to string
-    if (Buffer.isBuffer(content)) {
-      logger.info('[DEBUG] Converting Buffer to string...');
-      return content.toString('utf-8');
+    logger.info(`[DEBUG] Response type: ${typeof response}`);
+    logger.info(`[DEBUG] Response constructor: ${response?.constructor?.name || 'unknown'}`);
+
+    let content: string;
+
+    // Handle different response types
+    if (typeof response === 'string') {
+      // Already a string
+      content = response;
+      logger.info('[DEBUG] Response is already a string');
+    } else if (Buffer.isBuffer(response)) {
+      // Buffer - convert to string
+      content = response.toString('utf-8');
+      logger.info('[DEBUG] Converted Buffer to string');
+    } else if (response instanceof ReadableStream) {
+      // ReadableStream - consume it
+      logger.info('[DEBUG] Response is ReadableStream, consuming...');
+      content = await streamToString(response);
+      logger.info('[DEBUG] Stream consumed successfully');
+    } else if (response?.getReader) {
+      // Duck-type check for ReadableStream-like object
+      logger.info('[DEBUG] Response has getReader, treating as stream...');
+      content = await streamToString(response as ReadableStream<Uint8Array>);
+      logger.info('[DEBUG] Stream consumed successfully');
+    } else if (response?.body instanceof ReadableStream) {
+      // Response object with body stream
+      logger.info('[DEBUG] Response.body is ReadableStream, consuming...');
+      content = await streamToString(response.body);
+      logger.info('[DEBUG] Stream consumed successfully');
+    } else if (typeof response?.text === 'function') {
+      // Response object with text() method
+      logger.info('[DEBUG] Response has text() method, calling it...');
+      content = await response.text();
+      logger.info('[DEBUG] Got text from response');
+    } else if (response?.readable || response?.on) {
+      // Node.js stream
+      logger.info('[DEBUG] Response is Node.js stream, reading...');
+      content = await new Promise<string>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+        response.on('error', reject);
+      });
+      logger.info('[DEBUG] Node.js stream read successfully');
+    } else {
+      // Unknown type - try to stringify
+      logger.warn(`[DEBUG] Unknown response type, attempting toString: ${typeof response}`);
+      content = String(response);
     }
-    
+
+    logger.info(`[DEBUG] Final content length: ${content.length}`);
+    logger.info(`[DEBUG] First 500 chars: ${content.substring(0, 500)}`);
+
     return content;
   } catch (error: any) {
     if (error.statusCode === 404) {
@@ -458,7 +547,7 @@ export async function fetchUserTranscript(
 
     // DEBUG: Log meeting info structure
     logger.info(`[DEBUG] Meeting participants: ${JSON.stringify(meetingInfo.participants || 'none')}`);
-    
+
     // Build the TranscriptData object with safe attendee mapping
     const attendees = (meetingInfo.participants?.attendees || [])
       .filter((attendee: any) => attendee?.emailAddress)
@@ -466,7 +555,7 @@ export async function fetchUserTranscript(
         name: attendee.emailAddress?.name || attendee.emailAddress?.address || 'Unknown',
         email: attendee.emailAddress?.address || 'unknown@email.com',
       }));
-    
+
     const transcriptData: TranscriptData = {
       meetingId,
       meetingTitle: meetingInfo.subject || 'Untitled Meeting',
