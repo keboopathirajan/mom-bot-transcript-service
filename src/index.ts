@@ -27,10 +27,6 @@ declare module 'express-session' {
 // Initialize Express app
 const app = express();
 
-// #region agent log
-logger.info(`[DEBUG] Server config: nodeEnv=${config.server.nodeEnv}, redirectUri=${config.oauth.redirectUri}`);
-// #endregion
-
 // Trust proxy - REQUIRED for secure cookies behind Render/Heroku/etc
 app.set('trust proxy', 1);
 
@@ -109,10 +105,6 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
     const error = req.query.error as string;
     const errorDescription = req.query.error_description as string;
 
-    // #region agent log
-    logger.info(`[DEBUG] OAuth callback: hasCode=${!!code}, hasError=${!!error}, errorDesc=${errorDescription}`);
-    // #endregion
-
     // Check for errors from Microsoft
     if (error) {
       logger.error(`OAuth error: ${error} - ${errorDescription}`);
@@ -135,25 +127,13 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
     // Exchange code for tokens
     const tokens = await exchangeCodeForToken(code);
 
-    // #region agent log
-    logger.info(`[DEBUG] Token exchange: gotTokens=${!!tokens}, hasAccessToken=${!!tokens?.accessToken}, userEmail=${tokens?.userEmail}`);
-    // #endregion
-
     // Store tokens in session
     req.session.tokens = tokens;
-
-    // #region agent log
-    logger.info(`[DEBUG] Session set: sessionId=${req.sessionID}, hasTokensInSession=${!!req.session.tokens}`);
-    // #endregion
 
     logger.info('✅ User authenticated successfully');
 
     // Explicitly save session before redirect
     req.session.save((err) => {
-      // #region agent log
-      logger.info(`[DEBUG] Session save: error=${err?.message || 'none'}, sessionId=${req.sessionID}`);
-      // #endregion
-
       if (err) {
         logger.error('Failed to save session', err);
         return res.status(500).json({ error: 'Session save failed' });
@@ -162,9 +142,6 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
       res.redirect('/auth/status');
     });
   } catch (error: any) {
-    // #region agent log
-    logger.error(`[DEBUG] OAuth callback error: ${error?.message}`);
-    // #endregion
     logger.error('OAuth callback failed', error);
     res.status(500).json({
       error: 'Authentication failed',
@@ -179,15 +156,8 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
  * Returns current login status and user info
  */
 app.get('/auth/status', async (req: Request, res: Response) => {
-  // #region agent log
-  logger.info(`[DEBUG] Auth status: sessionId=${req.sessionID}, hasTokens=${!!req.session?.tokens}, cookie=${req.headers.cookie?.substring(0, 50) || 'none'}`);
-  // #endregion
-
   try {
     if (!req.session.tokens) {
-      // #region agent log
-      logger.info(`[DEBUG] No tokens in session: sessionId=${req.sessionID}, keys=${Object.keys(req.session || {}).join(',')}`);
-      // #endregion
       return res.status(200).json({
         authenticated: false,
         message: 'Not logged in. Visit /auth/login to authenticate.',
