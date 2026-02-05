@@ -41,22 +41,26 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     'http://localhost:3000',      // Local backend
     'http://127.0.0.1:5173',
     'http://127.0.0.1:3000',
-    config.frontend.url,          // Production frontend URL
+    config.frontend.url,          // Production frontend URL (from env var)
+    'https://mom-bot-frontend.vercel.app',  // Primary Vercel URL
+    'https://mom-bot-frontend-git-main-keboopathirajans-projects.vercel.app',  // Branch URL
   ];
-  
+
   const origin = req.headers.origin;
+  logger.info(`CORS check - Origin: ${origin}, Allowed: ${allowedOrigins.includes(origin || '')}`);
+  
   if (origin && allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   }
-  
+
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
-  
+
   next();
 });
 
@@ -184,7 +188,7 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
 app.get('/auth/status', async (req: Request, res: Response) => {
   try {
     logger.info(`Auth status check - Session ID: ${req.sessionID}, Has tokens: ${!!req.session.tokens}`);
-    
+
     if (!req.session.tokens) {
       return res.status(200).json({
         authenticated: false,
