@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import session from 'express-session';
+import path from 'path';
 import { config, validateConfig } from './config/config';
 import { logger } from './utils/logger';
 import { testGraphConnection } from './services/graphClient';
@@ -34,6 +35,31 @@ app.set('trust proxy', 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// CORS middleware - Allow local frontend dev to call Render backend
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const allowedOrigins = [
+    'http://localhost:5173',      // Vite dev server
+    'http://localhost:3000',      // Local backend
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:3000',
+  ];
+
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  }
+
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  next();
+});
+
 // Session middleware for storing user tokens
 app.use(
   session({
@@ -43,7 +69,9 @@ app.use(
     cookie: {
       secure: config.server.nodeEnv === 'production', // HTTPS only in production
       httpOnly: true,
-      sameSite: 'lax', // Required for OAuth redirects
+      // 'none' allows cross-origin requests (local frontend -> Render backend)
+      // 'lax' is used in dev to allow OAuth redirects without Secure requirement
+      sameSite: config.server.nodeEnv === 'production' ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     },
   })
@@ -367,6 +395,12 @@ app.get('/', (req: Request, res: Response) => {
 });
 
 /**
+ * Serve static files from frontend build
+ */
+const publicPath = path.join(__dirname, 'public');
+app.use(express.static(publicPath));
+
+/**
  * Error handling middleware
  */
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
@@ -379,13 +413,31 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 });
 
 /**
- * 404 handler
+ * Catch-all: Serve React app for any unmatched routes
+ * This enables client-side routing in the React SPA
  */
 app.use((req: Request, res: Response) => {
-  res.status(404).json({
-    error: 'Not found',
-    message: `Route ${req.method} ${req.path} not found`,
-  });
+  // Check if it's an API request that wasn't matched
+  if (req.path.startsWith('/api/') || req.path.startsWith('/auth/') ||
+    req.path.startsWith('/webhook') || req.path.startsWith('/transcript/') ||
+    req.path.startsWith('/meetings') || req.path.startsWith('/health') ||
+    req.path.startsWith('/test/')) {
+    res.status(404).json({
+      error: 'Not found',
+      message: `Route ${req.method} ${req.path} not found`,
+    });
+  } else {
+    // Serve React app for client-side routing
+    const indexPath = path.join(publicPath, 'index.html');
+    res.sendFile(indexPath, (err) => {
+      if (err) {
+        res.status(404).json({
+          error: 'Frontend not built',
+          message: 'Run "npm run build:frontend" to build the frontend',
+        });
+      }
+    });
+  }
 });
 
 /**
