@@ -183,17 +183,21 @@ export async function fetchTranscript(
     // Parse VTT to structured format
     const parsedEntries = parseVTT(vttContent);
 
-    // Build the TranscriptData object
+    // Build the TranscriptData object with safe attendee mapping
+    const attendees = (meetingInfo.participants?.attendees || [])
+      .filter((attendee: any) => attendee?.emailAddress)
+      .map((attendee: any) => ({
+        name: attendee.emailAddress?.name || attendee.emailAddress?.address || 'Unknown',
+        email: attendee.emailAddress?.address || 'unknown@email.com',
+      }));
+    
     const transcriptData: TranscriptData = {
       meetingId,
-      meetingTitle: meetingInfo.subject,
-      meetingType: determineMeetingType(meetingInfo.subject),
-      date: meetingInfo.startDateTime,
-      duration: calculateDuration(meetingInfo.startDateTime, meetingInfo.endDateTime),
-      attendees: (meetingInfo.participants?.attendees || []).map(attendee => ({
-        name: attendee.emailAddress.name,
-        email: attendee.emailAddress.address,
-      })),
+      meetingTitle: meetingInfo.subject || 'Untitled Meeting',
+      meetingType: determineMeetingType(meetingInfo.subject || ''),
+      date: meetingInfo.startDateTime || new Date().toISOString(),
+      duration: calculateDuration(meetingInfo.startDateTime || '', meetingInfo.endDateTime || ''),
+      attendees,
       transcript: parsedEntries,
     };
 
@@ -452,17 +456,24 @@ export async function fetchUserTranscript(
     // Parse VTT to structured format
     const parsedEntries = parseVTT(vttContent);
 
-    // Build the TranscriptData object
+    // DEBUG: Log meeting info structure
+    logger.info(`[DEBUG] Meeting participants: ${JSON.stringify(meetingInfo.participants || 'none')}`);
+    
+    // Build the TranscriptData object with safe attendee mapping
+    const attendees = (meetingInfo.participants?.attendees || [])
+      .filter((attendee: any) => attendee?.emailAddress)
+      .map((attendee: any) => ({
+        name: attendee.emailAddress?.name || attendee.emailAddress?.address || 'Unknown',
+        email: attendee.emailAddress?.address || 'unknown@email.com',
+      }));
+    
     const transcriptData: TranscriptData = {
       meetingId,
-      meetingTitle: meetingInfo.subject,
-      meetingType: determineMeetingType(meetingInfo.subject),
-      date: meetingInfo.startDateTime,
-      duration: calculateDuration(meetingInfo.startDateTime, meetingInfo.endDateTime),
-      attendees: (meetingInfo.participants?.attendees || []).map(attendee => ({
-        name: attendee.emailAddress.name,
-        email: attendee.emailAddress.address,
-      })),
+      meetingTitle: meetingInfo.subject || 'Untitled Meeting',
+      meetingType: determineMeetingType(meetingInfo.subject || ''),
+      date: meetingInfo.startDateTime || new Date().toISOString(),
+      duration: calculateDuration(meetingInfo.startDateTime || '', meetingInfo.endDateTime || ''),
+      attendees,
       transcript: parsedEntries,
     };
 
