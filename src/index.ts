@@ -54,7 +54,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
-    
+
     // Additional headers for third-party cookie support in incognito mode
     res.header('Cross-Origin-Resource-Policy', 'cross-origin');
     res.header('Cross-Origin-Embedder-Policy', 'unsafe-none');
@@ -94,7 +94,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   const origin = req.headers.origin;
   const allowedOrigins = [
     'http://localhost:5173',
-    'http://localhost:3000', 
+    'http://localhost:3000',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:3000',
     config.frontend.url,
@@ -104,20 +104,20 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
   if (origin && allowedOrigins.includes(origin)) {
     // Override res.cookie to ensure SameSite=None; Secure for cross-origin
-    const originalCookie = res.cookie;
-    res.cookie = function(name: string, value: string, options: any = {}) {
+    const originalCookie = res.cookie.bind(res);
+    res.cookie = function (name: string, value: string, options: any = {}) {
       const cookieOptions = {
         ...options,
         sameSite: 'none' as const,
         secure: true,
         httpOnly: true,
       };
-      return originalCookie.call(this, name, value, cookieOptions);
+      return originalCookie(name, value, cookieOptions);
     };
 
     // Intercept Set-Cookie headers to ensure proper formatting
     const originalSetHeader = res.setHeader;
-    res.setHeader = function(name: string, value: any) {
+    res.setHeader = function (name: string, value: any) {
       if (name.toLowerCase() === 'set-cookie') {
         if (Array.isArray(value)) {
           value = value.map((cookie: string) => {
@@ -228,7 +228,7 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
         logger.error('Failed to save session', err);
         return res.status(500).json({ error: 'Session save failed' });
       }
-      
+
       // Ensure session cookie is set with proper cross-origin attributes
       const sessionId = req.sessionID;
       res.cookie('sessionId', sessionId, {
@@ -238,9 +238,9 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         domain: undefined, // Don't set domain to allow cross-origin
       });
-      
+
       logger.info(`Session saved with ID: ${sessionId} for cross-origin access`);
-      
+
       // Redirect to frontend with success
       res.redirect(`${config.frontend.url}?auth=success`);
     });
@@ -262,7 +262,7 @@ app.get('/auth/status', async (req: Request, res: Response) => {
     const userAgent = req.headers['user-agent'] || '';
     const isIncognito = userAgent.includes('Chrome') && req.headers['sec-ch-ua'];
     const cookies = req.headers.cookie || 'No cookies';
-    
+
     logger.info(`Auth status check - Session ID: ${req.sessionID}, Has tokens: ${!!req.session.tokens}`);
     logger.info(`Request origin: ${req.headers.origin}, User-Agent: ${userAgent.substring(0, 100)}`);
     logger.info(`Cookies received: ${cookies.substring(0, 200)}`);
