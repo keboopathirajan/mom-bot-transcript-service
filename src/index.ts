@@ -53,7 +53,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
   }
 
   // Handle preflight requests
@@ -188,12 +188,12 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
 app.get('/auth/status', async (req: Request, res: Response) => {
   try {
     logger.info(`Auth status check - Session ID: ${req.sessionID}, Has tokens: ${!!req.session.tokens}`);
-    
+
     // Prevent caching of auth status
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
-    
+
     if (!req.session.tokens) {
       return res.status(200).json({
         authenticated: false,
