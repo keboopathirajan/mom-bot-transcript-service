@@ -29,9 +29,9 @@ import {
 
 // API base URL - use Render backend for both dev and prod
 // This ensures OAuth works since redirect URI is configured for Render
-const isLocalhost = typeof window !== 'undefined' && 
+const isLocalhost = typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-const API_BASE_URL = isLocalhost 
+const API_BASE_URL = isLocalhost
   ? 'https://mom-bot-transcript-service.onrender.com' // Render backend for local dev
   : ''; // Same origin in production (backend serves frontend)
 
