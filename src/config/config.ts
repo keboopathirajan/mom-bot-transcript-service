@@ -49,6 +49,11 @@ export const config = {
   session: {
     secret: process.env.SESSION_SECRET || 'mom-bot-session-secret-change-in-production',
   },
+
+  // Frontend configuration
+  frontend: {
+    url: process.env.FRONTEND_URL || 'http://localhost:5173',
+  },
 };
 
 /**

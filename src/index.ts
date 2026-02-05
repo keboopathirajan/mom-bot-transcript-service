@@ -165,15 +165,14 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
         logger.error('Failed to save session', err);
         return res.status(500).json({ error: 'Session save failed' });
       }
-      // Redirect to status page
-      res.redirect('/auth/status');
+      // Redirect to frontend with success
+      res.redirect(`${config.frontend.url}?auth=success`);
     });
   } catch (error: any) {
     logger.error('OAuth callback failed', error);
-    res.status(500).json({
-      error: 'Authentication failed',
-      message: error.message,
-    });
+    // Redirect to frontend with error
+    const errorMessage = encodeURIComponent(error.message || 'Authentication failed');
+    res.redirect(`${config.frontend.url}?auth=error&message=${errorMessage}`);
   }
 });
 
